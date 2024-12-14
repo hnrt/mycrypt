@@ -69,6 +69,14 @@ public class CommandLineParameters {
 		return _args[_index];
 	}
 
+	public int intArgument() {
+		try {
+			return Integer.parseInt(_args[_index]);
+		} catch (NumberFormatException e) {
+			throw new RuntimeException(e.getMessage());
+		}
+	}
+
 	public boolean process(String[] args) {
 		_args = args;
 		_index = -1;

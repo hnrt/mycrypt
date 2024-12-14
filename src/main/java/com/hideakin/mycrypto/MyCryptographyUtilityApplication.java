@@ -49,7 +49,7 @@ public class MyCryptographyUtilityApplication {
 	private int _keyLength = 0;
 	private int _ivLength = 0;
 	private int _nonceLength = 0;
-	private int _tagLength = AES_GCM_TAG_LENGTH_MIN;
+	private int _tagLength = 0;
 	private byte[] _key;
 	private byte[] _iv;
 	private byte[] _nonce;
@@ -82,8 +82,16 @@ public class MyCryptographyUtilityApplication {
 		_nonceLength = value;
 	}
 
+	private boolean hasTagLength() {
+		return _tagLength != 0; 
+	}
+
 	private void setTagLength(int value) {
-		_tagLength = value;
+		if (AES_GCM_TAG_LENGTH_MIN <= value && value <= AES_GCM_TAG_LENGTH_MAX) {
+			_tagLength = value;
+		} else {
+			throw new RuntimeException("Tag length is out of range.");
+		}
 	}
 
 	private boolean hasKey() {
@@ -335,8 +343,11 @@ public class MyCryptographyUtilityApplication {
 			_info.printf("KEY %s\n", HexString.toString(_key));
 			_info.printf(" IV %s\n", HexString.toString(_iv));
 		} else if (mode.equals("GCM")) {
+			if (_tagLength == 0) {
+				_tagLength = AES_GCM_TAG_LENGTH_MIN;
+			}
 			SecretKeySpec keySpec = new SecretKeySpec(_key, algorithm());
-			GCMParameterSpec gcmParameterSpec = new GCMParameterSpec(_tagLength, _nonce);
+			GCMParameterSpec gcmParameterSpec = new GCMParameterSpec(_tagLength * 8, _nonce);
 			cipher.init(_operation, keySpec, gcmParameterSpec);
 			_info.printf("  KEY %s\n", HexString.toString(_key));
 			_info.printf("NONCE %s\n", HexString.toString(_nonce));
@@ -546,16 +557,10 @@ public class MyCryptographyUtilityApplication {
 				})
 				.add("-tag", "NUMBER", String.format("specifies tag length (min=%d max=%d)", AES_GCM_TAG_LENGTH_MIN, AES_GCM_TAG_LENGTH_MAX), (p) -> {
 					if (p.next()) {
-						int length;
-						try {
-							length = Integer.parseInt(p.argument());
-						} catch (NumberFormatException e) {
-							throw new RuntimeException(e.getMessage());
-						}
-						if (AES_GCM_TAG_LENGTH_MIN <= length && length <= AES_GCM_TAG_LENGTH_MAX) {
-							setTagLength(length);
+						if (!hasTagLength()) {
+							setTagLength(p.intArgument());
 						} else {
-							throw new RuntimeException("Tag length is out of range.");
+							throw new RuntimeException("Tag length is already specified.");
 						}
 						return true;
 					} else {
