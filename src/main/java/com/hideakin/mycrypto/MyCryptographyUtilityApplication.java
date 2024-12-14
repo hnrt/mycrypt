@@ -122,7 +122,7 @@ public class MyCryptographyUtilityApplication {
 		_nonce = generate32Bytes(value);
 	}
 
-	private byte[] generate32Bytes(String value) {
+	private static byte[] generate32Bytes(String value) {
 		try {
 			MessageDigest md = MessageDigest.getInstance(SHA_256);
 			return md.digest(value.getBytes());
@@ -164,10 +164,6 @@ public class MyCryptographyUtilityApplication {
 		return checkFlags(FLAG_OVERWRITE);
 	}
 
-	private boolean canPrintInfo() {
-		return checkFlags(FLAG_INFO_TO_PRINT);
-	}
-
 	private boolean mustCloseInput() {
 		return checkFlags(FLAG_IN_TO_CLOSE);
 	}
@@ -181,9 +177,9 @@ public class MyCryptographyUtilityApplication {
 		verifyKey();
 		verifyIv();
 		verifyNonce();
+		verifyAad();
 		InputStream in = null;
 		OutputStream out = null;
-		_info = canPrintInfo() ? System.out : System.err;
 		try {
 			in = openInput();
 			out = openOutput();
@@ -232,10 +228,8 @@ public class MyCryptographyUtilityApplication {
 	}
 
 	private void verifyKey() throws Exception {
-		if (_key != null) {
-			if (_key.length != _keyLength) {
-				_key = Arrays.copyOf(_key, _keyLength);
-			}
+		if (hasKey()) {
+			_key = adjustLength(_key, _keyLength);
 		} else {
 			throw new RuntimeException("Private key is not specified.");
 		}
@@ -243,25 +237,41 @@ public class MyCryptographyUtilityApplication {
 
 	private void verifyIv() throws Exception {
 		if (_ivLength > 0) {
-			if (_iv != null) {
-				if (_iv.length != _ivLength) {
-					_iv = Arrays.copyOf(_iv, _ivLength);
-				}
+			if (hasIv()) {
+				_iv = adjustLength(_iv, _ivLength);
 			} else {
 				throw new RuntimeException("Initial vector is not specified.");
 			}
+		} else if (hasIv()) {
+			throw new RuntimeException("Initial vector is not required.");
 		}
 	}
 
 	private void verifyNonce() throws Exception {
 		if (_nonceLength > 0) {
-			if (_nonce != null) {
-				if (_nonce.length != _nonceLength) {
-					_nonce = Arrays.copyOf(_nonce, _nonceLength);
-				}
+			if (hasNonce()) {
+				_nonce = adjustLength(_nonce, _nonceLength);
 			} else {
-				throw new RuntimeException("Nonce is not specified.");
+				_nonce = adjustLength(generate32Bytes(String.format("%d", System.currentTimeMillis())), _nonceLength);
 			}
+		} else if (hasNonce()) {
+			throw new RuntimeException("Nonce is not required.");
+		}
+	}
+
+	private static byte[] adjustLength(byte[] value, int length) {
+		if (value.length != length) {
+			return Arrays.copyOf(value, length);
+		} else {
+			return value;
+		}
+	}
+
+	private void verifyAad() {
+		if (mode().equals("GCM")) {
+			// OK
+		} else if (hasAad()) {
+			throw new RuntimeException("Additional authentication data cannot be specified.");
 		}
 	}
 
@@ -293,6 +303,7 @@ public class MyCryptographyUtilityApplication {
 		OutputStream out;
 		if ("-".equals(_outFileName)) {
 			out = System.out;
+			_info = System.err;
 		} else {
 			Path path = Paths.get(_outFileName);
 			if (!canOverwrite() && Files.exists(path)) {
@@ -300,6 +311,7 @@ public class MyCryptographyUtilityApplication {
 			}
 			out = Files.newOutputStream(path);
 			setFlags(FLAG_OUT_TO_CLOSE | FLAG_INFO_TO_PRINT);
+			_info = System.out;
 		}
 		return out;
 	}
