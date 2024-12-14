@@ -351,6 +351,7 @@ public class MyCryptographyUtilityApplication {
 			cipher.init(_operation, keySpec, gcmParameterSpec);
 			_info.printf("  KEY %s\n", HexString.toString(_key));
 			_info.printf("NONCE %s\n", HexString.toString(_nonce));
+			_info.printf("  TAG %d\n", _tagLength);
 			if (_aad != null) {
 				_info.printf("  AAD %s\n", HexString.toString(_aad));
 			}
