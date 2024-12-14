@@ -1,4 +1,4 @@
-package com.hideakin.mycrypt;
+package com.hideakin.mycrypto;
 
 import static org.junit.Assert.*;
 
@@ -8,6 +8,8 @@ import java.nio.file.Paths;
 
 import org.junit.Before;
 import org.junit.Test;
+
+import com.hideakin.util.HexString;
 
 public class MyCryptographyUtilityTest {
 

@@ -1,4 +1,4 @@
-package com.hideakin.mycrypt;
+package com.hideakin.mycrypto;
 
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -12,24 +12,27 @@ import javax.crypto.Cipher;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
+import com.hideakin.util.CommandLineParameters;
+import com.hideakin.util.HexString;
+import com.hideakin.util.TextHelpers;
+
 public class MyCryptographyUtilityApplication {
 
-	public static final String VERSION = "0.3.0";
+	public static final String VERSION = "0.4.0";
 
 	public static final String DESCRIPTION = "My Cryptography Utility version %s\n";
 
-	public static final String SHA_256 = "SHA-256";
+	private static final String SHA_256 = "SHA-256";
 
-	public static final String AES_CBC_PKCS5PADDING = "AES/CBC/PKCS5Padding";
-	public static final String AES_ECB_PKCS5PADDING = "AES/ECB/PKCS5Padding";
-	public static final String AES_CFB8_NOPADDING = "AES/CFB8/NoPadding";
-	public static final String AES_OFB8_NOPADDING = "AES/OFB8/NoPadding";
+	private static final String AES_CBC_PKCS5PADDING = "AES/CBC/PKCS5Padding";
+	private static final String AES_ECB_PKCS5PADDING = "AES/ECB/PKCS5Padding";
+	private static final String AES_CFB8_NOPADDING = "AES/CFB8/NoPadding";
+	private static final String AES_OFB8_NOPADDING = "AES/OFB8/NoPadding";
 
-	public static final int FLAG_HELP = 1 << 0;
-	public static final int FLAG_OVERWRITE = 1 << 1;
-	public static final int FLAG_IN_TO_CLOSE = 1 << 4;
-	public static final int FLAG_OUT_TO_CLOSE = 1 << 5;
-	public static final int FLAG_INFO_TO_PRINT = 1 << 6;
+	private static final int FLAG_OVERWRITE = 1 << 0;
+	private static final int FLAG_IN_TO_CLOSE = 1 << 4;
+	private static final int FLAG_OUT_TO_CLOSE = 1 << 5;
+	private static final int FLAG_INFO_TO_PRINT = 1 << 6;
 
 	private String _transformation;
 	private int _keyLength = 0;
@@ -135,7 +138,7 @@ public class MyCryptographyUtilityApplication {
 				}
 			}
 			if (canPrintInfo()) {
-				System.out.printf("%s in\n", StringHelpers.numberOfBytes(inBytes));
+				System.out.printf("%s in\n", TextHelpers.numberOfBytes(inBytes));
 			}
 			byte[] result = cipher.doFinal();
 			if (result != null) {
@@ -144,7 +147,7 @@ public class MyCryptographyUtilityApplication {
 			}
 			out.flush();
 			if (canPrintInfo()) {
-				System.out.printf("%s out\n", StringHelpers.numberOfBytes(outBytes));
+				System.out.printf("%s out\n", TextHelpers.numberOfBytes(outBytes));
 			}
 		} finally {
 			closeOutput(out);
@@ -408,7 +411,7 @@ public class MyCryptographyUtilityApplication {
 					return true;
 				})
 				.add("-help", "prints this message", (p) -> {
-					setFlags(FLAG_HELP);
+					help(p);
 					return false;
 				})
 				.addAlias("-e", "-encrypt")
@@ -430,20 +433,27 @@ public class MyCryptographyUtilityApplication {
 		MyCryptographyUtilityApplication app = new MyCryptographyUtilityApplication();
 		try {
 			CommandLineParameters parameters = app.commandLineParameters();
-			parameters.process(args);
-			if (args.length == 0 || app.checkFlags(FLAG_HELP)) {
-				System.out.printf(DESCRIPTION, VERSION);
-				System.out.printf("%s", parameters);
-			} else {
+			if (args.length == 0) {
+				help(parameters);
+			} else if (parameters.process(args)) {
 				app.run();
 			}
 			System.exit(0);
 		} catch (Throwable t) {
-			System.err.printf("ERROR: %s\n", t.getMessage());
-			while ((t = t.getCause()) != null) {
-				System.err.printf("       %s\n", t.getMessage());
-			}
+			printError(t);
 			System.exit(1);
+		}
+	}
+
+	private static void help(CommandLineParameters parameters) {
+		System.out.printf(DESCRIPTION, VERSION);
+		System.out.printf("%s", parameters);
+	}
+
+	private static void printError(Throwable t) {
+		System.err.printf("ERROR: %s\n", t.getMessage());
+		while ((t = t.getCause()) != null) {
+			System.err.printf("       %s\n", t.getMessage());
 		}
 	}
 

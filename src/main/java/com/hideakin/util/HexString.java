@@ -1,4 +1,4 @@
-package com.hideakin.mycrypt;
+package com.hideakin.util;
 
 import java.util.Arrays;
 

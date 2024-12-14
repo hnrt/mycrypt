@@ -3,7 +3,7 @@
   <groupId>com.hideakin</groupId>
   <artifactId>mycrypt</artifactId>
   <version>0.0.1-SNAPSHOT</version>
-  <name>mycrypt</name>
+  <name>mycrypto</name>
   <description>My Cryptography Utility</description>
   <dependencies>
     <dependency>

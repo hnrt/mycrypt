@@ -1,4 +1,4 @@
-package com.hideakin.mycrypt;
+package com.hideakin.util;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -6,14 +6,14 @@ import java.util.function.Function;
 
 public class CommandLineParameters {
 
-	private static class ParameterInfo {
+	private static class Parameter {
 
 		private String _key;
 		private String _operand;
 		private String _description;
 		private Function<CommandLineParameters, Boolean> _function;
 
-		public ParameterInfo(String key, String operand, String description, Function<CommandLineParameters, Boolean> function) {
+		public Parameter(String key, String operand, String description, Function<CommandLineParameters, Boolean> function) {
 			_key = key;
 			_operand = operand;
 			_description = description;
@@ -38,7 +38,7 @@ public class CommandLineParameters {
 
 	}
 
-	private final Map<String, ParameterInfo> _mappings = new LinkedHashMap<>();
+	private final Map<String, Parameter> _mappings = new LinkedHashMap<>();
 	private final Map<String, String> _aliases = new LinkedHashMap<>();
 	private String[] _args = null;
 	private int _index = 0;
@@ -47,12 +47,12 @@ public class CommandLineParameters {
 	}
 
 	public CommandLineParameters add(String key, String description, Function<CommandLineParameters, Boolean> function) {
-		_mappings.put(key, new ParameterInfo(key, null, description, function));
+		_mappings.put(key, new Parameter(key, null, description, function));
 		return this;
 	}
 
 	public CommandLineParameters add(String key, String operand, String description, Function<CommandLineParameters, Boolean> function) {
-		_mappings.put(key, new ParameterInfo(key, operand, description, function));
+		_mappings.put(key, new Parameter(key, operand, description, function));
 		return this;
 	}
 	
@@ -74,7 +74,7 @@ public class CommandLineParameters {
 		_index = -1;
 		while (next()) {
 			String key = argument();
-			ParameterInfo p = _mappings.get(key);
+			Parameter p = _mappings.get(key);
 			if (p == null) {
 				String key2 = _aliases.get(key);
 				if (key2 != null) {
@@ -94,10 +94,16 @@ public class CommandLineParameters {
 	@Override
 	public String toString() {
 		int w = 0;
-		for (ParameterInfo p : _mappings.values()) {
+		for (Parameter p : _mappings.values()) {
 			int n1 = p.key().length();
 			int n2 = p.operand().length();
 			int n = n1 + 1 + n2;
+			if (w < n) {
+				w = n;
+			}
+		}
+		for (String k : _aliases.keySet()) {
+			int n = k.length();
 			if (w < n) {
 				w = n;
 			}
@@ -106,13 +112,14 @@ public class CommandLineParameters {
 		s.append("Syntax:\n");
 		s.append("  java -jar THIS.jar parameters\n");
 		s.append("Parameters:\n");
-		String f = String.format("  %%-%ds  %%s\n", w);
-		for (ParameterInfo p : _mappings.values()) {
-			s.append(String.format(f, p.key() + " " + p.operand(), p.description().replaceAll("\n", "\n" + StringHelpers.whitespaces(w + 4))));
+		String f = String.format("  %%-%ds  %%s\n", w); // format string
+		String i = "\n" + TextHelpers.whitespaces(w + 4); // newline followed by indentation
+		for (Parameter p : _mappings.values()) {
+			s.append(String.format(f, p.key() + " " + p.operand(), p.description().replaceAll("\n", i)));
 		}
 		s.append("Aliases:\n");
-		for (Map.Entry<String, String> entry : _aliases.entrySet()) {
-			s.append(String.format(f, entry.getKey(), "is the alias of " + entry.getValue()));
+		for (Map.Entry<String, String> e : _aliases.entrySet()) {
+			s.append(String.format(f, e.getKey(), "is the alias of " + e.getValue()));
 		}
 		return s.toString();
 	}
