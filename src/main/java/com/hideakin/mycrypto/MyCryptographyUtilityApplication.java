@@ -606,6 +606,7 @@ public class MyCryptographyUtilityApplication {
 				.addAlias("-k", "-key")
 				.addAlias("-i", "-iv")
 				.addAlias("-n", "-nonce")
+				.addAlias("-t", "-tag")
 				.addAlias("-a", "-aadata")
 				.addAlias("-K", "-keyphrase")
 				.addAlias("-I", "-ivphrase")
