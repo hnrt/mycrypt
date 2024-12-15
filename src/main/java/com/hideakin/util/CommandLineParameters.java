@@ -76,6 +76,10 @@ public class CommandLineParameters {
 			throw new RuntimeException(e.getMessage());
 		}
 	}
+	
+	public byte[] binaryArgument() {
+		return HexString.parse(_args[_index]);
+	}
 
 	public boolean process(String[] args) {
 		_args = args;
@@ -127,7 +131,7 @@ public class CommandLineParameters {
 		}
 		s.append("Aliases:\n");
 		for (Map.Entry<String, String> e : _aliases.entrySet()) {
-			s.append(String.format(f, e.getKey(), "is the alias of " + e.getValue()));
+			s.append(String.format(f, e.getKey(), "is the same as " + e.getValue()));
 		}
 		return s.toString();
 	}

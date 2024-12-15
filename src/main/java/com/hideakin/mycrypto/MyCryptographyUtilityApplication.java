@@ -8,29 +8,27 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.function.Supplier;
 
 import javax.crypto.Cipher;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
+import com.hideakin.mycrypto.constant.Algorithm;
+import com.hideakin.mycrypto.constant.OperationalMode;
+import com.hideakin.mycrypto.constant.Padding;
 import com.hideakin.util.CommandLineParameters;
 import com.hideakin.util.HexString;
 import com.hideakin.util.TextHelpers;
 
 public class MyCryptographyUtilityApplication {
 
-	public static final String VERSION = "0.4.0";
+	public static final String VERSION = "0.5.0";
 
 	public static final String DESCRIPTION = "My Cryptography Utility version %s\n";
-
-	private static final String SHA_256 = "SHA-256";
-
-	private static final String AES_CBC_PKCS5PADDING = "AES/CBC/PKCS5Padding";
-	private static final String AES_ECB_PKCS5PADDING = "AES/ECB/PKCS5Padding";
-	private static final String AES_CFB8_NOPADDING = "AES/CFB8/NoPadding";
-	private static final String AES_OFB8_NOPADDING = "AES/OFB8/NoPadding";
-	private static final String AES_GCM_NOPADDING = "AES/GCM/NoPadding";
 
 	private static final int AES_256_KEY_LENGTH = 256 / 8;
 	private static final int AES_192_KEY_LENGTH = 192 / 8;
@@ -43,9 +41,10 @@ public class MyCryptographyUtilityApplication {
 	private static final int FLAG_OVERWRITE = 1 << 0;
 	private static final int FLAG_IN_TO_CLOSE = 1 << 4;
 	private static final int FLAG_OUT_TO_CLOSE = 1 << 5;
-	private static final int FLAG_INFO_TO_PRINT = 1 << 6;
 
-	private String _transformation;
+	private Algorithm _algorithm = Algorithm.UNDEFINED;
+	private OperationalMode _mode = OperationalMode.UNDEFINED;
+	private Padding _padding = Padding.UNDEFINED;
 	private int _keyLength = 0;
 	private int _ivLength = 0;
 	private int _nonceLength = 0;
@@ -59,27 +58,33 @@ public class MyCryptographyUtilityApplication {
 	private int _operation = 0;
 	private int _flags = 0;
 	private PrintStream _info;
+	@SuppressWarnings("serial")
+	private final Map<OperationalMode, Supplier<Cipher>> _cipherSupplier = new HashMap<OperationalMode, Supplier<Cipher>>() {
+		{
+			put(OperationalMode.CBC, () -> { return getCipherWithKeyAndIv(); });
+			put(OperationalMode.ECB, () -> { return getCipherWithKey(); });
+			put(OperationalMode.CFB8, () -> { return getCipherWithKeyAndIv(); });
+			put(OperationalMode.OFB8, () -> { return getCipherWithKeyAndIv(); });
+			put(OperationalMode.GCM, () -> { return getCipherWithKeyAndNonce(); });
+		}
+	};
 
 	public MyCryptographyUtilityApplication() {
 	}
 
-	private void setTransformation(String value) {
-		if (_transformation != null) {
+	private void setTransformation(Algorithm algorithm, OperationalMode mode, Padding padding, int keyLength) {
+		if (_algorithm != Algorithm.UNDEFINED) {
 			throw new RuntimeException("Algorithm is specified more than once.");
 		}
-		_transformation = value;
-	}
-
-	private void setKeyLength(int value) {
-		_keyLength = value;
-	}
-
-	private void setIvLength(int value) {
-		_ivLength = value;
-	}
-
-	private void setNonceLength(int value) {
-		_nonceLength = value;
+		_algorithm = algorithm;
+		_mode = mode;
+		_padding = padding;
+		_keyLength = keyLength;
+		if (mode == OperationalMode.CBC || mode == OperationalMode.CFB8 || mode == OperationalMode.OFB8) {
+			_ivLength = AES_IV_LENGTH;
+		} else if (mode == OperationalMode.GCM) {
+			_nonceLength = AES_GCM_NONCE_LENGTH;
+		}
 	}
 
 	private boolean hasTagLength() {
@@ -106,49 +111,24 @@ public class MyCryptographyUtilityApplication {
 		return _nonce != null;
 	}
 
-	private void setKey(String value) {
-		_key = HexString.parse(value);
+	private void setKey(byte[] value) {
+		_key = value;
 	}
 
-	private void setIv(String value) {
-		_iv = HexString.parse(value);
+	private void setIv(byte[] value) {
+		_iv = value;
 	}
 
-	private void setNonce(String value) {
-		_nonce = HexString.parse(value);
-	}
-
-	private void setKeyPhrase(String value) {
-		_key = generate32Bytes(value);
-	}
-
-	private void setIvPhrase(String value) {
-		_iv = generate32Bytes(value);
-	}
-
-	private void setNoncePhrase(String value) {
-		_nonce = generate32Bytes(value);
-	}
-
-	private static byte[] generate32Bytes(String value) {
-		try {
-			MessageDigest md = MessageDigest.getInstance(SHA_256);
-			return md.digest(value.getBytes());
-		} catch (Exception e) {
-			throw new RuntimeException(e.getMessage());
-		}
+	private void setNonce(byte[] value) {
+		_nonce = value;
 	}
 
 	private boolean hasAad() {
 		return _aad != null;
 	}
 
-	private void setAad(String value) {
-		_aad = HexString.parse(value);
-	}
-
-	private void setAadText(String value) {
-		_aad = value.getBytes();
+	private void setAad(byte[] value) {
+		_aad = value;
 	}
 
 	private void setInputPath(int operation, String fileName) {
@@ -192,9 +172,6 @@ public class MyCryptographyUtilityApplication {
 			in = openInput();
 			out = openOutput();
 			Cipher cipher = getCipher();
-			if (_aad != null) {
-				cipher.updateAAD(_aad);
-			}
 			long inBytes = 0L;
 			long outBytes = 0L;
 			byte[] buf = new byte[8192];
@@ -224,7 +201,7 @@ public class MyCryptographyUtilityApplication {
 	}
 
 	private void verifyParameters() {
-		if (_transformation == null) {
+		if (_algorithm == Algorithm.UNDEFINED) {
 			throw new RuntimeException("Algorithm is not specified.");
 		}
 		if (_operation == 0) {
@@ -276,10 +253,10 @@ public class MyCryptographyUtilityApplication {
 	}
 
 	private void verifyAad() {
-		if (mode().equals("GCM")) {
+		if (_mode == OperationalMode.GCM) {
 			// OK
 		} else if (hasAad()) {
-			throw new RuntimeException("Additional authentication data cannot be specified.");
+			throw new RuntimeException(String.format("Additional authentication data cannot be specified for %s.", _mode.label()));
 		}
 	}
 
@@ -318,7 +295,7 @@ public class MyCryptographyUtilityApplication {
 				throw new RuntimeException("Output file already exists.");
 			}
 			out = Files.newOutputStream(path);
-			setFlags(FLAG_OUT_TO_CLOSE | FLAG_INFO_TO_PRINT);
+			setFlags(FLAG_OUT_TO_CLOSE);
 			_info = System.out;
 		}
 		return out;
@@ -334,130 +311,132 @@ public class MyCryptographyUtilityApplication {
 	}
 
 	private Cipher getCipher() throws Exception {
-		Cipher cipher = Cipher.getInstance(_transformation);
-		String mode = this.mode();
-		if (mode.equals("CBC") || mode.equals("CFB") || mode.equals("OFB")) {
-			SecretKeySpec keySpec = new SecretKeySpec(_key, algorithm());
+		return _cipherSupplier.get(_mode).get();
+	}
+
+	private Cipher getCipherWithKeyAndIv() {
+		try {
+			SecretKeySpec keySpec = new SecretKeySpec(_key, _algorithm.label());
 			IvParameterSpec ivSpec = new IvParameterSpec(_iv);
+			Cipher cipher = Cipher.getInstance(transformation());
 			cipher.init(_operation, keySpec, ivSpec);
 			_info.printf("KEY %s\n", HexString.toString(_key));
 			_info.printf(" IV %s\n", HexString.toString(_iv));
-		} else if (mode.equals("GCM")) {
+			return cipher;
+		} catch (Exception e) {
+			throw new RuntimeException(e.getMessage());
+		}
+	}
+
+	private Cipher getCipherWithKey() {
+		try {
+			SecretKeySpec keySpec = new SecretKeySpec(_key, _algorithm.label());
+			Cipher cipher = Cipher.getInstance(transformation());
+			cipher.init(_operation, keySpec);
+			_info.printf("KEY %s\n", HexString.toString(_key));
+			return cipher;
+		} catch (Exception e) {
+			throw new RuntimeException(e.getMessage());
+		}
+	}
+
+	private Cipher getCipherWithKeyAndNonce() {
+		try {
 			if (_tagLength == 0) {
 				_tagLength = AES_GCM_TAG_LENGTH_MIN;
 			}
-			SecretKeySpec keySpec = new SecretKeySpec(_key, algorithm());
+			SecretKeySpec keySpec = new SecretKeySpec(_key, _algorithm.label());
 			GCMParameterSpec gcmParameterSpec = new GCMParameterSpec(_tagLength * 8, _nonce);
+			Cipher cipher = Cipher.getInstance(transformation());
 			cipher.init(_operation, keySpec, gcmParameterSpec);
 			_info.printf("  KEY %s\n", HexString.toString(_key));
 			_info.printf("NONCE %s\n", HexString.toString(_nonce));
 			_info.printf("  TAG %d\n", _tagLength);
 			if (_aad != null) {
+				cipher.updateAAD(_aad);
 				_info.printf("  AAD %s\n", HexString.toString(_aad));
 			}
-		} else {
-			SecretKeySpec keySpec = new SecretKeySpec(_key, algorithm());
-			cipher.init(_operation, keySpec);
-			_info.printf("KEY %s\n", HexString.toString(_key));
+			return cipher;
+		} catch (Exception e) {
+			throw new RuntimeException(e.getMessage());
 		}
-		return cipher;
 	}
 
-	private String algorithm() {
-		return _transformation.split("/")[0];
+	private String transformation() {
+		return String.format("%s/%s/%s", _algorithm.label(), _mode.label(), _padding.label());
 	}
 
-	private String mode() {
-		return _transformation.split("/")[1].substring(0, 3);
+	private static final String SHA_256 = "SHA-256";
+
+	private static byte[] generate32Bytes(String value) {
+		try {
+			MessageDigest md = MessageDigest.getInstance(SHA_256);
+			return md.digest(value.getBytes());
+		} catch (Exception e) {
+			throw new RuntimeException(e.getMessage());
+		}
 	}
 
 	public CommandLineParameters commandLineParameters() {
 		return (new CommandLineParameters())
-				.add("aes-256-cbc", transformationDescription(AES_CBC_PKCS5PADDING, 256), (p) -> {
-					setTransformation(AES_CBC_PKCS5PADDING);
-					setKeyLength(AES_256_KEY_LENGTH);
-					setIvLength(AES_IV_LENGTH);
+				.add("aes-256-cbc", transformationDescription(Algorithm.AES, OperationalMode.CBC, Padding.PKCS5, 256), (p) -> {
+					setTransformation(Algorithm.AES, OperationalMode.CBC, Padding.PKCS5, AES_256_KEY_LENGTH);
 					return true;
 				})
-				.add("aes-192-cbc", transformationDescription(AES_CBC_PKCS5PADDING, 192), (p) -> {
-					setTransformation(AES_CBC_PKCS5PADDING);
-					setKeyLength(AES_192_KEY_LENGTH);
-					setIvLength(AES_IV_LENGTH);
+				.add("aes-192-cbc", transformationDescription(Algorithm.AES, OperationalMode.CBC, Padding.PKCS5, 192), (p) -> {
+					setTransformation(Algorithm.AES, OperationalMode.CBC, Padding.PKCS5, AES_192_KEY_LENGTH);
 					return true;
 				})
-				.add("aes-128-cbc", transformationDescription(AES_CBC_PKCS5PADDING, 128), (p) -> {
-					setTransformation(AES_CBC_PKCS5PADDING);
-					setKeyLength(AES_128_KEY_LENGTH);
-					setIvLength(AES_IV_LENGTH);
+				.add("aes-128-cbc", transformationDescription(Algorithm.AES, OperationalMode.CBC, Padding.PKCS5, 128), (p) -> {
+					setTransformation(Algorithm.AES, OperationalMode.CBC, Padding.PKCS5, AES_128_KEY_LENGTH);
 					return true;
 				})
-				.add("aes-256-ecb", transformationDescription(AES_ECB_PKCS5PADDING, 256), (p) -> {
-					setTransformation(AES_ECB_PKCS5PADDING);
-					setKeyLength(AES_256_KEY_LENGTH);
+				.add("aes-256-ecb", transformationDescription(Algorithm.AES, OperationalMode.ECB, Padding.PKCS5, 256), (p) -> {
+					setTransformation(Algorithm.AES, OperationalMode.ECB, Padding.PKCS5, AES_256_KEY_LENGTH);
 					return true;
 				})
-				.add("aes-192-ecb", transformationDescription(AES_ECB_PKCS5PADDING, 192), (p) -> {
-					setTransformation(AES_ECB_PKCS5PADDING);
-					setKeyLength(AES_192_KEY_LENGTH);
+				.add("aes-192-ecb", transformationDescription(Algorithm.AES, OperationalMode.ECB, Padding.PKCS5, 192), (p) -> {
+					setTransformation(Algorithm.AES, OperationalMode.ECB, Padding.PKCS5, AES_192_KEY_LENGTH);
 					return true;
 				})
-				.add("aes-128-ecb", transformationDescription(AES_ECB_PKCS5PADDING, 128), (p) -> {
-					setTransformation(AES_ECB_PKCS5PADDING);
-					setKeyLength(AES_128_KEY_LENGTH);
+				.add("aes-128-ecb", transformationDescription(Algorithm.AES, OperationalMode.ECB, Padding.PKCS5, 128), (p) -> {
+					setTransformation(Algorithm.AES, OperationalMode.ECB, Padding.PKCS5, AES_128_KEY_LENGTH);
 					return true;
 				})
-				.add("aes-256-cfb", transformationDescription(AES_CFB8_NOPADDING, 256), (p) -> {
-					setTransformation(AES_CFB8_NOPADDING);
-					setKeyLength(AES_256_KEY_LENGTH);
-					setIvLength(AES_IV_LENGTH);
+				.add("aes-256-cfb", transformationDescription(Algorithm.AES, OperationalMode.CFB8, Padding.PKCS5, 256), (p) -> {
+					setTransformation(Algorithm.AES, OperationalMode.CFB8, Padding.NONE, AES_256_KEY_LENGTH);
 					return true;
 				})
-				.add("aes-192-cfb", transformationDescription(AES_CFB8_NOPADDING, 192), (p) -> {
-					setTransformation(AES_CFB8_NOPADDING);
-					setKeyLength(AES_192_KEY_LENGTH);
-					setIvLength(AES_IV_LENGTH);
+				.add("aes-192-cfb", transformationDescription(Algorithm.AES, OperationalMode.CFB8, Padding.NONE, 192), (p) -> {
+					setTransformation(Algorithm.AES, OperationalMode.CFB8, Padding.NONE, AES_192_KEY_LENGTH);
 					return true;
 				})
-				.add("aes-128-cfb", transformationDescription(AES_CFB8_NOPADDING, 128), (p) -> {
-					setTransformation(AES_CFB8_NOPADDING);
-					setKeyLength(AES_128_KEY_LENGTH);
-					setIvLength(AES_IV_LENGTH);
+				.add("aes-128-cfb", transformationDescription(Algorithm.AES, OperationalMode.CFB8, Padding.NONE, 128), (p) -> {
+					setTransformation(Algorithm.AES, OperationalMode.CFB8, Padding.NONE, AES_128_KEY_LENGTH);
 					return true;
 				})
-				.add("aes-256-ofb", transformationDescription(AES_OFB8_NOPADDING, 256), (p) -> {
-					setTransformation(AES_OFB8_NOPADDING);
-					setKeyLength(AES_256_KEY_LENGTH);
-					setIvLength(AES_IV_LENGTH);
+				.add("aes-256-ofb", transformationDescription(Algorithm.AES, OperationalMode.OFB8, Padding.NONE, 256), (p) -> {
+					setTransformation(Algorithm.AES, OperationalMode.OFB8, Padding.NONE, AES_256_KEY_LENGTH);
 					return true;
 				})
-				.add("aes-192-ofb", transformationDescription(AES_OFB8_NOPADDING, 192), (p) -> {
-					setTransformation(AES_OFB8_NOPADDING);
-					setKeyLength(AES_192_KEY_LENGTH);
-					setIvLength(AES_IV_LENGTH);
+				.add("aes-192-ofb", transformationDescription(Algorithm.AES, OperationalMode.OFB8, Padding.NONE, 192), (p) -> {
+					setTransformation(Algorithm.AES, OperationalMode.OFB8, Padding.NONE, AES_192_KEY_LENGTH);
 					return true;
 				})
-				.add("aes-128-ofb", transformationDescription(AES_OFB8_NOPADDING, 128), (p) -> {
-					setTransformation(AES_OFB8_NOPADDING);
-					setKeyLength(AES_128_KEY_LENGTH);
-					setIvLength(AES_IV_LENGTH);
+				.add("aes-128-ofb", transformationDescription(Algorithm.AES, OperationalMode.OFB8, Padding.NONE, 128), (p) -> {
+					setTransformation(Algorithm.AES, OperationalMode.OFB8, Padding.NONE, AES_128_KEY_LENGTH);
 					return true;
 				})
-				.add("aes-256-gcm", transformationDescription(AES_GCM_NOPADDING, 256), (p) -> {
-					setTransformation(AES_GCM_NOPADDING);
-					setKeyLength(AES_256_KEY_LENGTH);
-					setNonceLength(AES_GCM_NONCE_LENGTH);
+				.add("aes-256-gcm", transformationDescription(Algorithm.AES, OperationalMode.GCM, Padding.NONE, 256), (p) -> {
+					setTransformation(Algorithm.AES, OperationalMode.GCM, Padding.NONE, AES_256_KEY_LENGTH);
 					return true;
 				})
-				.add("aes-192-gcm", transformationDescription(AES_GCM_NOPADDING, 192), (p) -> {
-					setTransformation(AES_GCM_NOPADDING);
-					setKeyLength(AES_192_KEY_LENGTH);
-					setNonceLength(AES_GCM_NONCE_LENGTH);
+				.add("aes-192-gcm", transformationDescription(Algorithm.AES, OperationalMode.GCM, Padding.NONE, 192), (p) -> {
+					setTransformation(Algorithm.AES, OperationalMode.GCM, Padding.NONE, AES_192_KEY_LENGTH);
 					return true;
 				})
-				.add("aes-128-gcm", transformationDescription(AES_GCM_NOPADDING, 128), (p) -> {
-					setTransformation(AES_GCM_NOPADDING);
-					setKeyLength(AES_128_KEY_LENGTH);
-					setNonceLength(AES_GCM_NONCE_LENGTH);
+				.add("aes-128-gcm", transformationDescription(Algorithm.AES, OperationalMode.GCM, Padding.NONE, 128), (p) -> {
+					setTransformation(Algorithm.AES, OperationalMode.GCM, Padding.NONE, AES_128_KEY_LENGTH);
 					return true;
 				})
 				.add("-encrypt", "PATH", "encrypts file\n(a hyphen represents the standard input)", (p) -> {
@@ -484,10 +463,19 @@ public class MyCryptographyUtilityApplication {
 						throw new RuntimeException("Output file is not specified.");
 					}
 				})
+				.add("-overwrite", "PATH", "specifies output file\n(file will be overwritten if it exists)", (p) -> {
+					if (p.next()) {
+						setOutputPath(p.argument());
+						setFlags(FLAG_OVERWRITE);
+						return true;
+					} else {
+						throw new RuntimeException("Output file is not specified.");
+					}
+				})
 				.add("-key", "HEXSTRING", "specifies private key", (p) -> {
 					if (p.next()) {
 						if (!hasKey()) {
-							setKey(p.argument());
+							setKey(p.binaryArgument());
 							return true;
 						} else {
 							throw new RuntimeException("Private key is already specified.");
@@ -499,7 +487,7 @@ public class MyCryptographyUtilityApplication {
 				.add("-iv", "HEXSTRING", "specifies initial vector", (p) -> {
 					if (p.next()) {
 						if (!hasIv()) {
-							setIv(p.argument());
+							setIv(p.binaryArgument());
 							return true;
 						} else {
 							throw new RuntimeException("Initial vector is already specified.");
@@ -511,7 +499,7 @@ public class MyCryptographyUtilityApplication {
 				.add("-nonce", "HEXSTRING", "specifies nonce", (p) -> {
 					if (p.next()) {
 						if (!hasNonce()) {
-							setNonce(p.argument());
+							setNonce(p.binaryArgument());
 							return true;
 						} else {
 							throw new RuntimeException("Nonce is already specified.");
@@ -523,7 +511,7 @@ public class MyCryptographyUtilityApplication {
 				.add("-keyphrase", "TEXT", "specifies text phrase to generate private key", (p) -> {
 					if (p.next()) {
 						if (!hasKey()) {
-							setKeyPhrase(p.argument());
+							setKey(generate32Bytes(p.argument()));
 							return true;
 						} else {
 							throw new RuntimeException("Private key is already specified.");
@@ -535,7 +523,7 @@ public class MyCryptographyUtilityApplication {
 				.add("-ivphrase", "TEXT", "specifies text phrase to generate initial vector", (p) -> {
 					if (p.next()) {
 						if (!hasIv()) {
-							setIvPhrase(p.argument());
+							setIv(generate32Bytes(p.argument()));
 							return true;
 						} else {
 							throw new RuntimeException("Initial vector is already specified.");
@@ -547,7 +535,7 @@ public class MyCryptographyUtilityApplication {
 				.add("-noncephrase", "TEXT", "specifies text phrase to generate nonce", (p) -> {
 					if (p.next()) {
 						if (!hasNonce()) {
-							setNoncePhrase(p.argument());
+							setNonce(generate32Bytes(p.argument()));
 							return true;
 						} else {
 							throw new RuntimeException("Nonce is already specified.");
@@ -571,7 +559,7 @@ public class MyCryptographyUtilityApplication {
 				.add("-aadata", "HEXSTRING", "specifies additional authentication data", (p) -> {
 					if (p.next()) {
 						if (!hasAad()) {
-							setAad(p.argument());
+							setAad(p.binaryArgument());
 							return true;
 						} else {
 							throw new RuntimeException("Additional authentication data is already specified.");
@@ -580,21 +568,17 @@ public class MyCryptographyUtilityApplication {
 						throw new RuntimeException("Additional authentication data value is not specified.");
 					}
 				})
-				.add("-aatext", "TEXT", "specifies additional authentication text", (p) -> {
+				.add("-aatext", "TEXT", "specifies additional authentication data with text", (p) -> {
 					if (p.next()) {
 						if (!hasAad()) {
-							setAadText(p.argument());
+							setAad(p.argument().getBytes());
 							return true;
 						} else {
 							throw new RuntimeException("Additional authentication data is already specified.");
 						}
 					} else {
-						throw new RuntimeException("Additional authentication text is not specified.");
+						throw new RuntimeException("Additional authentication data is not specified with text.");
 					}
-				})
-				.add("-overwrite", "writes to output file even if it already exists", (p) -> {
-					setFlags(FLAG_OVERWRITE);
-					return true;
 				})
 				.add("-help", "prints this message", (p) -> {
 					help(p);
@@ -603,6 +587,7 @@ public class MyCryptographyUtilityApplication {
 				.addAlias("-e", "-encrypt")
 				.addAlias("-d", "-decrypt")
 				.addAlias("-o", "-out")
+				.addAlias("-O", "-overwrite")
 				.addAlias("-k", "-key")
 				.addAlias("-i", "-iv")
 				.addAlias("-n", "-nonce")
@@ -615,9 +600,8 @@ public class MyCryptographyUtilityApplication {
 				.addAlias("-h", "-help");
 	}
 
-	private static String transformationDescription(String transformation, int keyBits) {
-		String[] ss = transformation.split("/");
-		return String.format("%s %s mode %s %d-bit-key", ss[0], ss[1], ss[2], keyBits);
+	private static String transformationDescription(Algorithm algorithm, OperationalMode mode, Padding padding, int keyBits) {
+		return String.format("%s [%s] padding=%s key=%d-bits", algorithm.label(), mode.description(), padding.description(), keyBits);
 	}
 
 	public static void main(String[] args) {
