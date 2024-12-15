@@ -768,4 +768,188 @@ public class MyCryptographyUtilityTest {
 		assertEquals(DATA4, actual);
 	}
 
+	@Test
+	public void test_gcm_1_1() throws Exception {
+		Path inPath = Paths.get(TMPDIR, "test_gcm_1_1.in");
+		Path outPath = Paths.get(TMPDIR, "test_gcm_1_1.out");
+		byte[] inData = DATA1.getBytes();
+		Files.write(inPath, inData);
+		MyCryptographyUtilityApplication app = new MyCryptographyUtilityApplication();
+		app.commandLineParameters().process(new String[] {
+				"aes-256-gcm",
+				"-e", inPath.toString(),
+				"-o", outPath.toString(),
+				"-K", "xyzzy",
+				"-N", "20241210"
+		});
+		app.run();
+		byte[] result = Files.readAllBytes(outPath);
+		String actual = HexString.toString(result);
+		System.out.printf("# IN %s\n", HexString.toString(inData));
+		System.out.printf("#OUT %s\n", actual);
+		assertEquals("90F4BD9F6459EF502B2515BDE45F915FBBA1FDFCB8BAB5E704350CD6", actual);
+	}
+
+	@Test
+	public void test_gcm_1_2() throws Exception {
+		Path inPath = Paths.get(TMPDIR, "test_gcm_1_2.in");
+		Path outPath = Paths.get(TMPDIR, "test_gcm_1_2.out");
+		byte[] inData = HexString.parse("90F4BD9F6459EF502B2515BDE45F915FBBA1FDFCB8BAB5E704350CD6");
+		Files.write(inPath, inData);
+		MyCryptographyUtilityApplication app = new MyCryptographyUtilityApplication();
+		app.commandLineParameters().process(new String[] {
+				"aes-256-gcm",
+				"-d", inPath.toString(),
+				"-o", outPath.toString(),
+				"-k", "184858A00FD7971F810848266EBCECEE5E8B69972C5FFAED622F5EE078671AED",
+				"-n", "B87E2F0E1BEB474894C50196"
+		});
+		app.run();
+		byte[] result = Files.readAllBytes(outPath);
+		assertEquals(16, result.length);
+		String actual = new String(result);
+		System.out.printf("#%s\n", actual);
+		assertEquals(DATA1, actual);
+	}
+
+	@Test
+	public void test_gcm_2_1() throws Exception {
+		Path inPath = Paths.get(TMPDIR, "test_gcm_2_1.in");
+		Path outPath = Paths.get(TMPDIR, "test_gcm_2_1.out");
+		byte[] inData = DATA2.getBytes();
+		Files.write(inPath, inData);
+		MyCryptographyUtilityApplication app = new MyCryptographyUtilityApplication();
+		app.commandLineParameters().process(new String[] {
+				"aes-256-gcm",
+				"-e", inPath.toString(),
+				"-o", outPath.toString(),
+				"-k", "184858A00FD7971F810848266EBCECEE5E8B69972C5FFAED622F5EE078671AED",
+				"-n", "B87E2F0E1BEB474894C50196",
+				"-t", "16",
+				"-A", "I'll be back."
+		});
+		app.run();
+		byte[] result = Files.readAllBytes(outPath);
+		String actual = HexString.toString(result);
+		System.out.printf("# IN %s\n", HexString.toString(inData));
+		System.out.printf("#OUT %s\n", actual);
+		assertEquals("90F4BD9F6459EF502B2515BDE45F915F8B04EA7D05286B4745639E7CA745FEF6C7", actual);
+	}
+
+	@Test
+	public void test_gcm_2_2() throws Exception {
+		Path inPath = Paths.get(TMPDIR, "test_gcm_2_2.in");
+		Path outPath = Paths.get(TMPDIR, "test_gcm_2_2.out");
+		byte[] inData = HexString.parse("90F4BD9F6459EF502B2515BDE45F915F8B04EA7D05286B4745639E7CA745FEF6C7");
+		Files.write(inPath, inData);
+		MyCryptographyUtilityApplication app = new MyCryptographyUtilityApplication();
+		app.commandLineParameters().process(new String[] {
+				"aes-256-gcm",
+				"-d", inPath.toString(),
+				"-o", outPath.toString(),
+				"-K", "xyzzy",
+				"-N", "20241210",
+				"-t", "16",
+				"-a", "49276C6C206265206261636B2E"
+		});
+		app.run();
+		byte[] result = Files.readAllBytes(outPath);
+		assertEquals(17, result.length);
+		String actual = new String(result);
+		System.out.printf("#%s\n", actual);
+		assertEquals(DATA2, actual);
+	}
+
+	@Test
+	public void test_gcm_3_1() throws Exception {
+		Path inPath = Paths.get(TMPDIR, "test_gcm_3_1.in");
+		Path outPath = Paths.get(TMPDIR, "test_gcm_3_1.out");
+		byte[] inData = DATA3.getBytes();
+		Files.write(inPath, inData);
+		MyCryptographyUtilityApplication app = new MyCryptographyUtilityApplication();
+		app.commandLineParameters().process(new String[] {
+				"aes-192-gcm",
+				"-e", inPath.toString(),
+				"-o", outPath.toString(),
+				"-K", "xyzzy",
+				"-N", "20241210",
+				"-t", "13"
+		});
+		app.run();
+		byte[] result = Files.readAllBytes(outPath);
+		String actual = HexString.toString(result);
+		System.out.printf("# IN %s\n", HexString.toString(inData));
+		System.out.printf("#OUT %s\n", actual);
+		assertEquals("E1BECF982A99D227151CA4B249D76284DF40A963FCAB33DCF6409E2F43F084025C1EBF90DA96C1429151026A898B515EAA6CA8F8B2F994AC85457E2BCF2F0D08D3987ABD37033E5617A849E329CF3CDAC47E67EC2236497888258C57FFAC70A82553AF4217EC00597D57C076EBEC0A1E971AE807B1C054735C582BED3BCC3FAFB3A462ADD8AD", actual);
+	}
+
+	@Test
+	public void test_gcm_3_2() throws Exception {
+		Path inPath = Paths.get(TMPDIR, "test_gcm_3_2.in");
+		Path outPath = Paths.get(TMPDIR, "test_gcm_3_2.out");
+		byte[] inData = HexString.parse("E1BECF982A99D227151CA4B249D76284DF40A963FCAB33DCF6409E2F43F084025C1EBF90DA96C1429151026A898B515EAA6CA8F8B2F994AC85457E2BCF2F0D08D3987ABD37033E5617A849E329CF3CDAC47E67EC2236497888258C57FFAC70A82553AF4217EC00597D57C076EBEC0A1E971AE807B1C054735C582BED3BCC3FAFB3A462ADD8AD");
+		Files.write(inPath, inData);
+		MyCryptographyUtilityApplication app = new MyCryptographyUtilityApplication();
+		app.commandLineParameters().process(new String[] {
+				"aes-192-gcm",
+				"-d", inPath.toString(),
+				"-o", outPath.toString(),
+				"-k", "184858A00FD7971F810848266EBCECEE5E8B69972C5FFAED",
+				"-n", "B87E2F0E1BEB474894C50196",
+				"-t", "13"
+		});
+		app.run();
+		byte[] result = Files.readAllBytes(outPath);
+		String actual = new String(result);
+		System.out.printf("#%s\n", actual);
+		assertEquals(DATA3, actual);
+	}
+
+	@Test
+	public void test_gcm_4_1() throws Exception {
+		Path inPath = Paths.get(TMPDIR, "test_gcm_4_1.in");
+		Path outPath = Paths.get(TMPDIR, "test_gcm_4_1.out");
+		byte[] inData = DATA4.getBytes();
+		Files.write(inPath, inData);
+		MyCryptographyUtilityApplication app = new MyCryptographyUtilityApplication();
+		app.commandLineParameters().process(new String[] {
+				"aes-128-gcm",
+				"-e", inPath.toString(),
+				"-o", outPath.toString(),
+				"-K", "xyzzy",
+				"-N", "20241210",
+				"-t", "14",
+				"-A", "吉田沙保里さん（４２）が、連日の活躍で観客を沸かせた。"
+		});
+		app.run();
+		byte[] result = Files.readAllBytes(outPath);
+		String actual = HexString.toString(result);
+		System.out.printf("# IN %s\n", HexString.toString(inData));
+		System.out.printf("#OUT %s\n", actual);
+		assertEquals("73CEA4A1B4D89635654B8F450C42F238BA1668FBD47944353D8FBC10E05FAAF3F03E726427071CD80536F606612CFD57F64161AA40FE6AE7B601CD57E30A5D87511B01FCBD2E27B5D7D46B1ABC92AAAA58807F71D9E990FFE0B07AB74CE1D23AFDD9217017", actual);
+	}
+
+	@Test
+	public void test_gcm_4_2() throws Exception {
+		Path inPath = Paths.get(TMPDIR, "test_gcm_4_2.in");
+		Path outPath = Paths.get(TMPDIR, "test_gcm_4_2.out");
+		byte[] inData = HexString.parse("73CEA4A1B4D89635654B8F450C42F238BA1668FBD47944353D8FBC10E05FAAF3F03E726427071CD80536F606612CFD57F64161AA40FE6AE7B601CD57E30A5D87511B01FCBD2E27B5D7D46B1ABC92AAAA58807F71D9E990FFE0B07AB74CE1D23AFDD9217017");
+		Files.write(inPath, inData);
+		MyCryptographyUtilityApplication app = new MyCryptographyUtilityApplication();
+		app.commandLineParameters().process(new String[] {
+				"aes-128-gcm",
+				"-d", inPath.toString(),
+				"-o", outPath.toString(),
+				"-k", "184858A00FD7971F810848266EBCECEE",
+				"-n", "B87E2F0E1BEB474894C50196",
+				"-t", "14",
+				"-a", "E59089E794B0E6B299E4BF9DE9878CE38195E38293EFBC88EFBC94EFBC92EFBC89E3818CE38081E980A3E697A5E381AEE6B4BBE8BA8DE381A7E8A6B3E5AEA2E38292E6B2B8E3818BE3819BE3819FE38082"
+		});
+		app.run();
+		byte[] result = Files.readAllBytes(outPath);
+		String actual = new String(result);
+		System.out.printf("#%s\n", actual);
+		assertEquals(DATA4, actual);
+	}
+
 }
