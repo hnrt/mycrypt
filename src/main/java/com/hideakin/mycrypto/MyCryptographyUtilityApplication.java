@@ -26,7 +26,7 @@ import com.hideakin.util.TextHelpers;
 
 public class MyCryptographyUtilityApplication {
 
-	public static final String VERSION = "0.5.0";
+	public static final String VERSION = "0.6.0";
 
 	public static final String DESCRIPTION = "My Cryptography Utility version %s\n";
 
@@ -52,7 +52,7 @@ public class MyCryptographyUtilityApplication {
 	private byte[] _key;
 	private byte[] _iv;
 	private byte[] _nonce;
-	private byte[] _aad; // Additional Authentication Data
+	private byte[] _aad; // Additional Authenticated Data
 	private String _inFileName;
 	private String _outFileName;
 	private int _operation = 0;
@@ -403,7 +403,7 @@ public class MyCryptographyUtilityApplication {
 					setTransformation(Algorithm.AES, OperationalMode.ECB, Padding.PKCS5, AES_128_KEY_LENGTH);
 					return true;
 				})
-				.add("aes-256-cfb", transformationDescription(Algorithm.AES, OperationalMode.CFB8, Padding.PKCS5, 256), (p) -> {
+				.add("aes-256-cfb", transformationDescription(Algorithm.AES, OperationalMode.CFB8, Padding.NONE, 256), (p) -> {
 					setTransformation(Algorithm.AES, OperationalMode.CFB8, Padding.NONE, AES_256_KEY_LENGTH);
 					return true;
 				})
@@ -544,7 +544,7 @@ public class MyCryptographyUtilityApplication {
 						throw new RuntimeException("Nonce phrase is not specified.");
 					}
 				})
-				.add("-tag", "NUMBER", String.format("specifies tag length (min=%d max=%d)", AES_GCM_TAG_LENGTH_MIN, AES_GCM_TAG_LENGTH_MAX), (p) -> {
+				.add("-tag", "NUMBER", String.format("specifies tag length\n%s: min=%d max=%d", OperationalMode.GCM, AES_GCM_TAG_LENGTH_MIN, AES_GCM_TAG_LENGTH_MAX), (p) -> {
 					if (p.next()) {
 						if (!hasTagLength()) {
 							setTagLength(p.intArgument());
