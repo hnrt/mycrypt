@@ -6,6 +6,7 @@ import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -26,7 +27,7 @@ import com.hideakin.util.TextHelpers;
 
 public class MyCryptographyUtilityApplication {
 
-	public static final String VERSION = "0.6.0";
+	public static final String VERSION = "0.7.0";
 
 	public static final String DESCRIPTION = "My Cryptography Utility version %s\n";
 
@@ -39,8 +40,8 @@ public class MyCryptographyUtilityApplication {
 	private static final int AES_GCM_TAG_LENGTH_MAX = 16;
 	
 	private static final int FLAG_OVERWRITE = 1 << 0;
-	private static final int FLAG_IN_TO_CLOSE = 1 << 4;
-	private static final int FLAG_OUT_TO_CLOSE = 1 << 5;
+	private static final int FLAG_IN_TO_CLOSE = 1 << 1;
+	private static final int FLAG_OUT_TO_CLOSE = 1 << 2;
 
 	private Algorithm _algorithm = Algorithm.UNDEFINED;
 	private OperationalMode _mode = OperationalMode.UNDEFINED;
@@ -55,6 +56,8 @@ public class MyCryptographyUtilityApplication {
 	private byte[] _aad; // Additional Authenticated Data
 	private String _inFileName;
 	private String _outFileName;
+	private Path _outPath;
+	private Path _tmpPath;
 	private int _operation = 0;
 	private int _flags = 0;
 	private PrintStream _info;
@@ -65,7 +68,7 @@ public class MyCryptographyUtilityApplication {
 			put(OperationalMode.ECB, () -> { return getCipherWithKey(); });
 			put(OperationalMode.CFB8, () -> { return getCipherWithKeyAndIv(); });
 			put(OperationalMode.OFB8, () -> { return getCipherWithKeyAndIv(); });
-			put(OperationalMode.GCM, () -> { return getCipherWithKeyAndNonce(); });
+			put(OperationalMode.GCM, () -> { return getCipherWithGcmParameterSpec(); });
 		}
 	};
 
@@ -144,28 +147,16 @@ public class MyCryptographyUtilityApplication {
 		_flags |= value;
 	}
 	
+	private void resetFlags(int value) {
+		_flags &= ~value;
+	}
+
 	private boolean checkFlags(int value) {
 		return (_flags & value) == value;
 	}
 
-	private boolean canOverwrite() {
-		return checkFlags(FLAG_OVERWRITE);
-	}
-
-	private boolean mustCloseInput() {
-		return checkFlags(FLAG_IN_TO_CLOSE);
-	}
-
-	private boolean mustCloseOutput() {
-		return checkFlags(FLAG_OUT_TO_CLOSE);
-	}
-
 	public void run() throws Exception {
 		verifyParameters();
-		verifyKey();
-		verifyIv();
-		verifyNonce();
-		verifyAad();
 		InputStream in = null;
 		OutputStream out = null;
 		try {
@@ -187,6 +178,7 @@ public class MyCryptographyUtilityApplication {
 				}
 			}
 			_info.printf("%s in\n", TextHelpers.numberOfBytes(inBytes));
+			closeInput(in);
 			byte[] result = cipher.doFinal();
 			if (result != null) {
 				out.write(result);
@@ -194,22 +186,27 @@ public class MyCryptographyUtilityApplication {
 			}
 			out.flush();
 			_info.printf("%s out\n", TextHelpers.numberOfBytes(outBytes));
+			commitOutput(out);
 		} finally {
-			closeOutput(out);
 			closeInput(in);
+			closeOutput(out);
 		}
 	}
 
-	private void verifyParameters() {
+	private void verifyParameters() throws Exception {
 		if (_algorithm == Algorithm.UNDEFINED) {
 			throw new RuntimeException("Algorithm is not specified.");
 		}
 		if (_operation == 0) {
-			throw new RuntimeException("Mode(encrypt/decrypt) is not specified.");
+			throw new RuntimeException("Operation(encrypt/decrypt) is not specified.");
 		}
 		if (_outFileName == null) {
 			throw new RuntimeException("Output file is not specified.");
 		}
+		verifyKey();
+		verifyIv();
+		verifyNonce();
+		verifyAad();
 	}
 
 	private void verifyKey() throws Exception {
@@ -225,7 +222,7 @@ public class MyCryptographyUtilityApplication {
 			if (hasIv()) {
 				_iv = adjustLength(_iv, _ivLength);
 			} else {
-				throw new RuntimeException("Initial vector is not specified.");
+				_iv = adjustLength(generate32Bytes(null), _ivLength);
 			}
 		} else if (hasIv()) {
 			throw new RuntimeException("Initial vector is not required.");
@@ -237,7 +234,7 @@ public class MyCryptographyUtilityApplication {
 			if (hasNonce()) {
 				_nonce = adjustLength(_nonce, _nonceLength);
 			} else {
-				_nonce = adjustLength(generate32Bytes(String.format("%d", System.currentTimeMillis())), _nonceLength);
+				_nonce = adjustLength(generate32Bytes(null), _nonceLength);
 			}
 		} else if (hasNonce()) {
 			throw new RuntimeException("Nonce is not required.");
@@ -275,11 +272,13 @@ public class MyCryptographyUtilityApplication {
 		return in;
 	}
 	
-	private void closeInput(InputStream in) throws Exception {
-		if (mustCloseInput()) {
+	private void closeInput(InputStream in) {
+		if (checkFlags(FLAG_IN_TO_CLOSE)) {
 			try {
 				in.close();
+				resetFlags(FLAG_IN_TO_CLOSE);
 			} catch (Exception e) {
+				printError(e);
 			}
 		}
 	}
@@ -290,22 +289,39 @@ public class MyCryptographyUtilityApplication {
 			out = System.out;
 			_info = System.err;
 		} else {
-			Path path = Paths.get(_outFileName);
-			if (!canOverwrite() && Files.exists(path)) {
+			_outPath = Paths.get(_outFileName);
+			if (!checkFlags(FLAG_OVERWRITE)&& Files.exists(_outPath)) {
 				throw new RuntimeException("Output file already exists.");
 			}
-			out = Files.newOutputStream(path);
+			_tmpPath = Paths.get(String.format("%s.%d", _outFileName, System.currentTimeMillis()));
+			out = Files.newOutputStream(_tmpPath);
 			setFlags(FLAG_OUT_TO_CLOSE);
 			_info = System.out;
 		}
 		return out;
 	}
 	
-	private void closeOutput(OutputStream out) throws Exception {
-		if (mustCloseOutput()) {
+	private void commitOutput(OutputStream out) throws Exception {
+		if (checkFlags(FLAG_OUT_TO_CLOSE)) {
+			out.close();
+			resetFlags(FLAG_OUT_TO_CLOSE);
+			if (checkFlags(FLAG_OVERWRITE)) {
+				Files.move(_tmpPath, _outPath, StandardCopyOption.REPLACE_EXISTING);
+			} else if (Files.exists(_outPath)) {
+				throw new RuntimeException("Output file already exists.");
+			} else {
+				Files.move(_tmpPath, _outPath);
+			}
+		}
+	}
+
+	private void closeOutput(OutputStream out) {
+		if (checkFlags(FLAG_OUT_TO_CLOSE)) {
 			try {
 				out.close();
+				resetFlags(FLAG_OUT_TO_CLOSE);
 			} catch (Exception e) {
+				printError(e);
 			}
 		}
 	}
@@ -340,7 +356,7 @@ public class MyCryptographyUtilityApplication {
 		}
 	}
 
-	private Cipher getCipherWithKeyAndNonce() {
+	private Cipher getCipherWithGcmParameterSpec() {
 		try {
 			if (_tagLength == 0) {
 				_tagLength = AES_GCM_TAG_LENGTH_MIN;
@@ -370,6 +386,9 @@ public class MyCryptographyUtilityApplication {
 
 	private static byte[] generate32Bytes(String value) {
 		try {
+			if (value == null) {
+				value = String.format("%d", System.nanoTime());
+			}
 			MessageDigest md = MessageDigest.getInstance(SHA_256);
 			return md.digest(value.getBytes());
 		} catch (Exception e) {
@@ -439,7 +458,7 @@ public class MyCryptographyUtilityApplication {
 					setTransformation(Algorithm.AES, OperationalMode.GCM, Padding.NONE, AES_128_KEY_LENGTH);
 					return true;
 				})
-				.add("-encrypt", "PATH", "encrypts file\n(a hyphen represents the standard input)", (p) -> {
+				.add("-encrypt", "PATH", "specifies input file to encrypt\nreads from standard input if a hyphen is specified", (p) -> {
 					if (p.next()) {
 						setInputPath(Cipher.ENCRYPT_MODE, p.argument());
 						return true;
@@ -447,7 +466,7 @@ public class MyCryptographyUtilityApplication {
 						throw new RuntimeException("Input file is not specified.");
 					}
 				})
-				.add("-decrypt", "PATH", "decrypts file\n(a hyphen represents the standard input)", (p) -> {
+				.add("-decrypt", "PATH", "specifies input file to decrypt\nreads from standard input if a hyphen is specified", (p) -> {
 					if (p.next()) {
 						setInputPath(Cipher.DECRYPT_MODE, p.argument());
 						return true;
@@ -455,7 +474,7 @@ public class MyCryptographyUtilityApplication {
 						throw new RuntimeException("Input file is not specified.");
 					}
 				})
-				.add("-out", "PATH", "specifies output file\n(a hyphen represents the standard output)", (p) -> {
+				.add("-out", "PATH", "specifies output file\nwrites to standard output if a hyphen is specified", (p) -> {
 					if (p.next()) {
 						setOutputPath(p.argument());
 						return true;
@@ -463,7 +482,7 @@ public class MyCryptographyUtilityApplication {
 						throw new RuntimeException("Output file is not specified.");
 					}
 				})
-				.add("-overwrite", "PATH", "specifies output file\n(file will be overwritten if it exists)", (p) -> {
+				.add("-overwrite", "PATH", "specifies output file\nwrites to file even if it exists", (p) -> {
 					if (p.next()) {
 						setOutputPath(p.argument());
 						setFlags(FLAG_OVERWRITE);
@@ -544,7 +563,7 @@ public class MyCryptographyUtilityApplication {
 						throw new RuntimeException("Nonce phrase is not specified.");
 					}
 				})
-				.add("-tag", "NUMBER", String.format("specifies tag length\n%s: min=%d max=%d", OperationalMode.GCM, AES_GCM_TAG_LENGTH_MIN, AES_GCM_TAG_LENGTH_MAX), (p) -> {
+				.add("-tag", "NUMBER", String.format("specifies tag length\nGCM: min=%d max=%d", AES_GCM_TAG_LENGTH_MIN, AES_GCM_TAG_LENGTH_MAX), (p) -> {
 					if (p.next()) {
 						if (!hasTagLength()) {
 							setTagLength(p.intArgument());
@@ -604,6 +623,18 @@ public class MyCryptographyUtilityApplication {
 		return String.format("%s [%s] padding=%s key=%d-bits", algorithm.label(), mode.description(), padding.description(), keyBits);
 	}
 
+	private void cleanup() {
+		if (_tmpPath != null) {
+			try {
+				if (Files.exists(_tmpPath)) {
+					Files.delete(_tmpPath);
+				}
+			} catch (Exception e) {
+				printError(e);
+			}
+		}
+	}
+
 	public static void main(String[] args) {
 		MyCryptographyUtilityApplication app = new MyCryptographyUtilityApplication();
 		try {
@@ -617,6 +648,8 @@ public class MyCryptographyUtilityApplication {
 		} catch (Throwable t) {
 			printError(t);
 			System.exit(1);
+		} finally {
+			app.cleanup();
 		}
 	}
 
